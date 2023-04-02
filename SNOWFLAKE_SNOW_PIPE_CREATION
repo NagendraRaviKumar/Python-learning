@@ -153,4 +153,31 @@ SHOW FILE FORMATS;
 # COUNT QUERY
 select count(*) from hr;
 
+# CHECKING THE PIPE STATUS
+
+select system$pipe_status('hrdata');
+
+# PAUSE THE RUNNING STATUS OF PIPE
+
+ALTER pipe hrdata set pipe_execution_paused=true;
+
+# running the pipe again
+
+ALTER pipe hrdata set pipe_execution_paused=false;
+
+--Billing the 
+
+select * from table(information_schema.pipe_usage_history(pipe=>'hrdata'));
+
+-- troubleshooting
+
+select * from table(information_schema.copy_history(table_name=>'hr',start_time=>dateadd(hours,-1,current_timestamp())));
+
+
+--validating the pipe
+
+select * from table(validate_pipe_load(pipe_name => 'hrdata', start_time => dateadd(hour,-1,current_timestamp())));
+
+
+
 
