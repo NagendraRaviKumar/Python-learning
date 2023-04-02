@@ -1,0 +1,156 @@
+
+role: account_admin 
+
+# creating the raw database
+CREATE DATABASE EDP_RAW;
+
+# creating the raw schema in the above database
+
+CREATE SCHEMA EDP_RAW.EDP_RAW_SCHEMA;
+
+using the edp_raw database
+
+USE DATABASE EDP_RAW;
+
+# creating the ingress param table for ingesting the file
+
+CREATE TABLE EDP_RAW.EDP_RAW_SCHEMA.EDP_INGRESS_PARM(SOURCE_FILENAME VARCHAR(50), SF_TABLENAME VARCHAR(50), SF_COLUMNS VARCHAR(250), 
+SF_QUERY VARCHAR(250), SF_SCHEMA VARCHAR(20),SF_DELIMITER VARCHAR(10), SF_SKIP_HEADER VARCHAR(10),SF_FILETYPE VARCHAR(10),SF_FILE_FORMAT VARCHAR(20);
+
+# INSERTING THE VALUES INTO QUERY
+
+INSERT INTO EDP_INGRESS_PARM VALUES('card_transactions','CARD_TRANSACTIONS','CARD_ID,MEMBER_ID,AMOUNT,POSTCODE,POS_ID,TRANSACTION_DT,STATUS','SELECT $1,$2,$3,$4,$5,$6,$7','EDP_RAW','|','Y','CSV');
+
+
+# runing the select query
+
+SELECT * FROM EDP_INGRESS_PARM;
+
+# CREATING THE ROLE
+
+CREATE OR REPLACE ROLE RAW_DATA;
+
+# GRANTING THE PREMISSION TO THE ROLE
+
+GRANT SELECT ON ALL TABLES IN SCHEMA EDP_RAW.EDP_RAW_SCHEMA TO ROLE RAW_DATA;
+
+# GETTING THE ROLES IN THE SNOWFLAKE
+
+SHOW ROLES;
+
+# GETTING THE OUTPUT FOR THE LAST QUERY
+
+select * from table(result_scan(last_query_id()))
+
+# CREATING THE STORAGE INTEGRATION FOR EXTERNAL STAGE
+
+CREATE STORAGE INTEGRATION aws_external_stage
+TYPE = EXTERNAL_STAGE
+STORAGE_PROVIDER ='S3'
+ENABLED =TRUE
+STORAGE_AWS_ROLE_ARN ='arn:aws:iam::299431611330:role/mysnowflakerole'
+STORAGE_ALLOWED_LOCATIONS=('s3://pyspark-learning-bucket/')
+
+# CHECKING THE PARAMETER FOR EXTERNAL STAGE
+
+describe INTEGRATION aws_external_stage;
+
+# GRANTING THE CREATING STAGE ACCESS TO THE PARTICULAR ROLE
+
+grant create stage on schema edp_raw_schema to role accountadmin;
+
+# GRANTING THE USAGE 
+
+grant usage on integration aws_external_stage to role accountadmin;
+
+# CHECKING THE FILE FORMATS IN THE SNOWFLAKE
+
+SHOW FILE FORMATS;
+
+# CREATING THE EXTERNAL STAGE WITH accountadmin ROLE
+
+create stage my_s3_stage 
+STORAGE_INTEGRATION  =aws_external_stage
+url='s3://pyspark-learning-bucket/';
+
+# CREATING THE CARD_ TRANSACTION TABLE TO RUN THE COPY COMMAND
+
+CREATE OR REPLACE TABLE CARD_TRANSACTION (CARD_ID VARCHAR(50), MEMBER_ID VARCHAR(50), AMOUNT VARCHAR(10), POSTCODE VARCHAR(10), POS_ID VARCHAR(50), TRANSACTION_DT VARCHAR(20), STATUS VARCHAR(10));
+
+# CREATING THE COPY COMMAND FOR CARD_TRANSACTION
+
+COPY INTO CARD_TRANSACTION (CARD_ID,MEMBER_ID,AMOUNT,POSTCODE,POS_ID,TRANSACTION_DT,STATUS) FROM (SELECT $1,$2,$3,$4,$5,$6,$7 FROM @my_s3_stage/Ingress/card_transactions.csv) FILE_FORMAT = MY_CSV ON_ERROR = 'ABORT_STATEMENT';
+
+# QUERYING THE CARD_TRANSACTION TABLE
+SELECT * FROM CARD_TRANSACTION;
+
+# CREATING THE FILE FORMAT WITH SKIPPING THE HEADER
+
+CREATE FILE FORMAT my_csv SKIP_HEADER=1;
+
+# SHOW FILE FORMATS
+SHOW FILE FORMATS;
+
+# UPDATE COMMAND FOR SETTING THE CARD_TRANSACTIONS TABLE NAME
+UPDATE EDP_INGRESS_PARM SET SF_TABLENAME='CARD_TRANSACTIONS' WHERE SOURCE_FILENAME='card_transactions';
+
+# ADDING THE COLUMN TO THE EXISTING TABLE
+
+ALTER TABLE EDP_INGRESS_PARM ADD SF_FILE_FORMAT VARCHAR(10);
+
+# CHANGING THE DATA TYPE FOR EDP_INGRESS_PARM
+
+ALTER TABLE EDP_INGRESS_PARM ALTER SF_FILE_FORMAT SET DATA TYPE VARCHAR(50);
+
+# CREATING THE DAY_TABLE FOR RUNNING THE COPY COMMAND
+
+Create table edp_raw.edp_raw_schema.day_table(instant int,dteday varchar(10),season int,yr int,mnth int,holiday boolean, weekday int, workingday boolean, weathersit int, temp varchar(10), atemp varchar(10), hum varchar(10),
+windsepeed varchar(10),casual varchar(5),registered varchar(10),cnt int)
+
+# INSERTING THE DAY TABLE COMMAND IN THE EDP_INGRESS_PARM
+
+INSERT INTO EDP_INGRESS_PARM VALUES('day','day_table','INSTANT,DTEDAY,SEASON,YR,MNTH,HOLIDAY,WEEKDAY,WORKINGDAY,WEATHERSIT,TEMP,ATEMP,HUM,WINDSEPEED,CASUAL,REGISTERED,CNT','SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16','EDP_RAW','|','Y','DAT','PIPE_DELIMITED');
+
+# SETTING THE FILE FORMAT WITH UPDATE COMMAND
+
+UPDATE  EDP_INGRESS_PARM SET SF_FILE_FORMAT ='MY_CSV' WHERE SOURCE_FILENAME ='card_transactions';
+
+# CREATING THE FILE FORMAT WITH PIPE DELIMITED AND SKIPPING THE HEADER
+
+CREATE FILE FORMAT PIPE_DELIMITED 
+TYPE=CSV 
+FIELD_DELIMITER='|'
+SKIP_HEADER=1;
+
+# SHOWING THE FILE FORMATS
+
+SHOW FILE FORMATS;
+
+# QUERING THE INFORMATION FOR LOAD_HISTORY TABLE IN INFORMATION_SCHEMA TO GET PREVIOUS EXECUTED COMMANDS
+
+select * from EDP_RAW.INFORMATION_SCHEMA.LOAD_HISTORY;
+
+# CREATING THE HR TABLE IN THE EDP_RAW.EDP_RAW_SCHEMA 
+
+create table hr(Employee_Name varchar(100),EmpID int ,MarriedID int ,MaritalStatusID int ,GenderID int ,EmpStatusID int ,DeptID int ,PerfScoreID int ,FromDiversityJobFairID int ,Salary float,Termd int,PositionID int,Position varchar(100),State varchar(100),Zip varchar(100),DOB varchar(100),Sex varchar(100),MaritalDesc varchar(100),CitizenDesc varchar(100),HispanicLatino varchar(100),RaceDesc varchar(100),DateofHire varchar(100),DateofTermination varchar(100),TermReason varchar(100),EmploymentStatus varchar(100),Department varchar(100),ManagerName varchar(100),ManagerID varchar(100),RecruitmentSource varchar(100),PerformanceScore varchar(100),EngagementSurvey varchar(100),EmpSatisfaction varchar(100),SpecialProjectsCount varchar(100),LastPerformanceReview_Date varchar(100),DaysLateLast30 varchar(100),Absences varchar(100));
+
+# CREATING THE SNOWPIPE FOR AUTOMATIC EXECUTION OF THE FILE 
+
+create or replace pipe hrdata auto_ingest=true as
+copy into hr(Employee_Name,EmpID,MarriedID,MaritalStatusID,GenderID,EmpStatusID,DeptID,PerfScoreID,FromDiversityJobFairID,Salary,Termd,PositionID,Position,State,Zip,DOB,Sex,MaritalDesc,CitizenDesc,HispanicLatino,RaceDesc,DateofHire,DateofTermination,TermReason,EmploymentStatus,Department,ManagerName,ManagerID,RecruitmentSource,PerformanceScore,EngagementSurvey,EmpSatisfaction,SpecialProjectsCount,LastPerformanceReview_Date,DaysLateLast30,Absences
+) from (SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,NULL,$35,$36 FROM @my_s3_stage/HR_Data/)
+file_format =MY_CSV ON_ERROR ='CONTINUE';
+
+# GEETING THE PIPE INFORMATION TO SQS TOPIC IN THE BUCKET PROPERTIES
+SHOW PIPES;
+
+GET THE ARN VALUE AND COPY IN TO SQS TOPIC
+
+SHOW FILE FORMATS;
+
+# AFTER CREATING THE TOPIC WAIT FOR 15 MINS FOR FIRST RUN
+
+# COUNT QUERY
+select count(*) from hr;
+
+
